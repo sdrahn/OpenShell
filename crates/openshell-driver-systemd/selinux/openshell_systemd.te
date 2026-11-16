@@ -28,10 +28,14 @@ gen_require(`
 type openshell_sandbox_t;
 type openshell_sandbox_exec_t;
 init_daemon_domain(openshell_sandbox_t, openshell_sandbox_exec_t)
+# The units set NoNewPrivileges=, under which a domain is entered only
+# with this.
+init_nnp_daemon_domain(openshell_sandbox_t)
 
 type openshell_supervisor_t;
 type openshell_supervisor_exec_t;
 init_daemon_domain(openshell_supervisor_t, openshell_supervisor_exec_t)
+init_nnp_daemon_domain(openshell_supervisor_t)
 
 # The helper's state directory, and what in it is neither domain's.
 type openshell_systemd_var_lib_t;
