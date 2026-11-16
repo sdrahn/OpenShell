@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: Apache-2.0
 title: "Sandbox Runtimes"
 sidebar-title: "Runtimes"
-description: "Configure the Docker, Podman, MicroVM, or Kubernetes runtime that runs OpenShell sandboxes."
-keywords: "Generative AI, Cybersecurity, AI Agents, Sandboxing, Docker, Podman, MicroVM, Kubernetes, MXC, Reference"
+description: "Configure the Docker, Podman, systemd, MicroVM, or Kubernetes runtime that runs OpenShell sandboxes."
+keywords: "Generative AI, Cybersecurity, AI Agents, Sandboxing, Docker, Podman, systemd, MicroVM, Kubernetes, MXC, Reference"
 position: 4
 ---
 
@@ -19,6 +19,7 @@ the sandbox record and driver-supported persistent storage.
 |---|---|---|
 | [Docker](#docker-driver) | `docker` | Local development and single-machine gateways. |
 | [Podman](#podman-driver) | `podman` | Rootless Linux workstations without a Docker daemon. |
+| [systemd](#systemd-driver) | `systemd` | Linux hosts where workloads run as system units and use the host's installed tools, without a container runtime. |
 | [MicroVM](#microvm-driver) | `vm` | Workloads need a VM boundary instead of a container boundary. |
 | [Kubernetes](#kubernetes-driver) | `kubernetes` | Shared clusters, remote compute, and GPU scheduling. |
 | [Windows MXC](https://github.com/NVIDIA/OpenShell/blob/windows/WINDOWS.md) | `mxc` | Native Windows workloads on x64 or ARM64. |
@@ -210,6 +211,63 @@ Podman supports the same `volume`, `tmpfs`, and `bind` mounts as [Docker](#docke
 
 Podman also supports `image` mounts, which mount a container image read-only at `target`. Image mounts require disabling resource admission.
 
+## systemd Driver
+
+The systemd driver runs each sandbox as systemd units on the gateway host, without a container runtime or a VM. The workload uses the host's file system read-only, so an agent runs the tools installed on the host. Sandboxes of this driver have no image, and a request that names one fails.
+
+The driver is an [extension driver](#extension-drivers) that ships with OpenShell as two programs. `openshell-driver-systemd` runs as the gateway user. `openshell-systemd-helper` runs as root, serves only the gateway user, and starts each sandbox from unit templates installed with it. The driver requires Linux with systemd 257 or later and Landlock.
+
+Each sandbox is three units, named by the sandbox ID:
+
+| Unit | Runs | Network |
+|---|---|---|
+| `openshell-sandbox-netns@ID.service` | Holds the sandbox network namespace. | Loopback only. |
+| `openshell-sandbox-supervisor@ID.service` | The supervisor. | The host network. |
+| `openshell-sandbox-workload@ID.service` | The sandbox runtime and the agent. | The namespace of the first unit. |
+
+The supervisor and the workload run as the `openshell-sandbox` user with no capabilities. The workload has its own process ID namespace and mount namespace, so it cannot see or signal other sandboxes, supervisors, or their files.
+
+On hosts with SELinux, an optional policy module confines the workload and the supervisor to their own domains. The workload then cannot reach the sockets of other services, such as D-Bus, even where file permissions allow it. The driver's `README.md` describes how to build and load the module.
+
+To set up the driver:
+
+1. Create the workload user.
+
+   ```shell
+   useradd --system --user-group openshell-sandbox
+   ```
+
+2. Install `openshell-supervisor`, `openshell-sandbox`, and `openshell-systemd-helper` in `/usr/libexec/openshell/`, and the unit files from `crates/openshell-driver-systemd/systemd/` in `/usr/lib/systemd/system/`.
+
+3. Name the gateway user for the helper in a drop-in, then start the helper.
+
+   ```shell
+   systemctl edit openshell-systemd-helper.service
+   systemctl enable --now openshell-systemd-helper.service
+   ```
+
+   The drop-in sets `Environment=OPENSHELL_SYSTEMD_HELPER_ALLOW_USER=<gateway user>`.
+
+4. Start the driver as the gateway user. Set `--gateway-tls-ca` when the gateway uses TLS.
+
+   ```shell
+   openshell-driver-systemd --bind-socket "$XDG_RUNTIME_DIR/openshell/systemd-driver.sock" --gateway-tls-ca <gateway CA certificate>
+   ```
+
+5. Select the driver in the gateway TOML file and restart the gateway.
+
+   ```toml
+   [openshell.gateway]
+   compute_driver = "systemd"
+
+   [openshell.drivers.systemd]
+   socket_path = "/run/user/1000/openshell/systemd-driver.sock"
+   ```
+
+Run `openshell gateway info` to confirm that the gateway lists the `systemd` compute driver.
+
+The driver does not apply CPU, memory, or GPU requests. The workload unit sets `TasksMax=2048`. To add limits or other unit settings for every sandbox, create a drop-in for `openshell-sandbox-workload@.service`. The driver does not support mounts, suspend, or resume.
+
 ## MicroVM Driver
 
 The MicroVM driver runs each sandbox in its own lightweight VM. It requires host virtualization: Apple Hypervisor on macOS or KVM on Linux.
@@ -363,6 +421,7 @@ On Docker and Podman, set `process.run_as_user` and `process.run_as_group` in th
 | Driver | Default identity |
 |---|---|
 | Docker, Podman | The image's `USER`, otherwise `1000`. |
+| systemd | The `openshell-sandbox` user on the gateway host. A policy that selects another user or group fails. |
 | Kubernetes | OpenShift SCC namespace annotations, otherwise `1000`. Override with `sandbox_uid` and `sandbox_gid`. |
 | MicroVM | The image's `sandbox` account, otherwise `1000`. Override with `sandbox_uid` and `sandbox_gid`. |
 
