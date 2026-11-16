@@ -105,6 +105,40 @@ The helper creates the mount points the units bind to (`/.openshell`,
 `/sandbox`, `/etc/openshell`), which are the paths the stock programs use in
 a container.
 
+## SELinux
+
+`selinux/` holds an optional policy module with a domain for each of the two
+sandbox units. The units enter the domains through the labels of the two
+programs, so they need no change, and they start as before on a host
+without the module.
+
+- `openshell_sandbox_t`, the workload: `openshell-sandbox` and everything it
+  starts. It reads the host as far as file modes let its user, apart from the
+  files the policy counts as security files. It writes its workspace, its
+  temporary files and its own directory under `/run`. It reaches its
+  supervisor's control socket and no other service's socket: not D-Bus, not
+  the journal. It cannot signal or trace another domain.
+- `openshell_supervisor_t`, the supervisor: its launch files, its runtime
+  directory, the control socket, and the network.
+
+Build and load it with the policy development files of the distribution
+(`selinux-policy-devel`), then label what is already installed:
+
+```shell
+make -f /usr/share/selinux/devel/Makefile -C selinux openshell_systemd.pp
+semodule -i selinux/openshell_systemd.pp
+restorecon -R /usr/libexec/openshell /var/lib/openshell /.openshell /sandbox
+systemctl restart openshell-systemd-helper.service
+```
+
+The helper runs `restorecon` on the files it writes for a launch, because a
+new file takes its directory's label and the domains tell a sandbox's files
+apart by label. A workspace's own files keep the labels they were made with.
+
+The module was written against the policy of openSUSE Leap 16.0. It does not
+confine the helper or the network namespace's unit, and all sandboxes share
+one domain: the namespaces keep one sandbox from another, not the policy.
+
 ## Not supported
 
 - Images: there is no root file system but the host's.

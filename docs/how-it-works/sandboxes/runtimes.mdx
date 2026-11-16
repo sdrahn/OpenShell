@@ -227,6 +227,8 @@ Each sandbox is three units, named by the sandbox ID:
 
 The supervisor and the workload run as the `openshell-sandbox` user with no capabilities. The workload has its own process ID namespace and mount namespace, so it cannot see or signal other sandboxes, supervisors, or their files.
 
+On hosts with SELinux, an optional policy module confines the workload and the supervisor to their own domains. The workload then cannot reach the sockets of other services, such as D-Bus, even where file permissions allow it. The driver's `README.md` describes how to build and load the module.
+
 To set up the driver:
 
 1. Create the workload user.
