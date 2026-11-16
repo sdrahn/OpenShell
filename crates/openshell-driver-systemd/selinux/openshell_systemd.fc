@@ -13,6 +13,7 @@
 /var/lib/openshell/systemd/[^/]+/resolv\.conf	--	gen_context(system_u:object_r:net_conf_t,s0)
 
 /run/openshell-sandbox(/.*)?				gen_context(system_u:object_r:openshell_supervisor_runtime_t,s0)
+/run/openshell-supervisor-ca(/.*)?			gen_context(system_u:object_r:openshell_sandbox_runtime_t,s0)
 
 # The mount points the units bind a sandbox's directories to.
 /\.openshell(/.*)?					gen_context(system_u:object_r:openshell_systemd_var_lib_t,s0)

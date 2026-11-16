@@ -67,6 +67,12 @@ files_tmp_file(openshell_sandbox_tmp_t)
 type openshell_supervisor_tmp_t;
 files_tmp_file(openshell_supervisor_tmp_t)
 
+# The workload's own directory under /run, a file system of its unit: it
+# keeps the certificate authority of its proxy there.
+type openshell_sandbox_runtime_t;
+files_pid_file(openshell_sandbox_runtime_t)
+files_mountpoint(openshell_sandbox_runtime_t)
+
 ########################################
 # systemd: it reads a launch's environment file and binds a sandbox's
 # directories into the units' mount namespaces.
@@ -74,6 +80,13 @@ files_tmp_file(openshell_supervisor_tmp_t)
 read_files_pattern(init_t, openshell_systemd_var_lib_t, openshell_systemd_var_lib_t)
 allow init_t { openshell_systemd_var_lib_t openshell_supervisor_conf_t openshell_sandbox_channel_t openshell_sandbox_workspace_t }:dir { search getattr mounton };
 allow init_t { openshell_systemd_var_lib_t openshell_supervisor_conf_t openshell_sandbox_channel_t }:file { getattr mounton };
+allow init_t openshell_sandbox_runtime_t:dir { search getattr mounton };
+# It removes a unit's private /tmp when the unit stops.
+delete_dirs_pattern(init_t, { openshell_sandbox_tmp_t openshell_supervisor_tmp_t }, { openshell_sandbox_tmp_t openshell_supervisor_tmp_t })
+delete_files_pattern(init_t, { openshell_sandbox_tmp_t openshell_supervisor_tmp_t }, { openshell_sandbox_tmp_t openshell_supervisor_tmp_t })
+delete_lnk_files_pattern(init_t, openshell_sandbox_tmp_t, openshell_sandbox_tmp_t)
+delete_fifo_files_pattern(init_t, openshell_sandbox_tmp_t, openshell_sandbox_tmp_t)
+delete_sock_files_pattern(init_t, openshell_sandbox_tmp_t, openshell_sandbox_tmp_t)
 
 ########################################
 # The supervisor
@@ -132,13 +145,18 @@ kernel_read_kernel_sysctls(openshell_supervisor_t)
 kernel_read_network_state(openshell_supervisor_t)
 dev_read_urand(openshell_supervisor_t)
 dev_read_sysfs(openshell_supervisor_t)
-auth_use_nsswitch(openshell_supervisor_t)
+auth_read_passwd(openshell_supervisor_t)
 logging_send_syslog_msg(openshell_supervisor_t)
+# It looks at /var/log when it starts.
+logging_list_logs(openshell_supervisor_t)
+files_dontaudit_getattr_all_dirs(openshell_supervisor_t)
 
 ########################################
 # The workload
 
-allow openshell_sandbox_t self:process { fork signal_perms getsched setsched setpgid getsession getpgid getcap getrlimit setrlimit };
+# ptrace: openshell-sandbox reads the memory of the processes it started
+# to answer their system calls.
+allow openshell_sandbox_t self:process { fork signal_perms getsched setsched setpgid getsession getpgid getcap getrlimit setrlimit ptrace };
 allow openshell_sandbox_t self:fifo_file manage_fifo_file_perms;
 allow openshell_sandbox_t self:unix_stream_socket { create_stream_socket_perms connectto };
 allow openshell_sandbox_t self:unix_dgram_socket { create_socket_perms sendto };
@@ -170,7 +188,10 @@ dev_rw_zero(openshell_sandbox_t)
 dev_read_rand(openshell_sandbox_t)
 dev_read_urand(openshell_sandbox_t)
 miscfiles_read_localization(openshell_sandbox_t)
-auth_use_nsswitch(openshell_sandbox_t)
+# User names from the files, not from a service: no D-Bus, no sssd.
+auth_read_passwd(openshell_sandbox_t)
+kernel_dontaudit_getattr_core_if(openshell_sandbox_t)
+kernel_dontaudit_getattr_message_if(openshell_sandbox_t)
 
 # Its workspace and its temporary files.
 manage_dirs_pattern(openshell_sandbox_t, openshell_sandbox_workspace_t, openshell_sandbox_workspace_t)
@@ -187,6 +208,10 @@ manage_fifo_files_pattern(openshell_sandbox_t, openshell_sandbox_tmp_t, openshel
 manage_sock_files_pattern(openshell_sandbox_t, openshell_sandbox_tmp_t, openshell_sandbox_tmp_t)
 files_tmp_filetrans(openshell_sandbox_t, openshell_sandbox_tmp_t, { file dir lnk_file fifo_file sock_file })
 fs_tmpfs_filetrans(openshell_sandbox_t, openshell_sandbox_tmp_t, { file dir lnk_file fifo_file sock_file })
+
+manage_dirs_pattern(openshell_sandbox_t, openshell_sandbox_runtime_t, openshell_sandbox_runtime_t)
+manage_files_pattern(openshell_sandbox_t, openshell_sandbox_runtime_t, openshell_sandbox_runtime_t)
+files_search_pids(openshell_sandbox_t)
 
 # The channel to its supervisor, and nothing else of the helper's state.
 search_dirs_pattern(openshell_sandbox_t, openshell_systemd_var_lib_t, openshell_systemd_var_lib_t)
