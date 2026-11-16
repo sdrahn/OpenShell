@@ -147,6 +147,14 @@ dev_read_urand(openshell_supervisor_t)
 dev_read_sysfs(openshell_supervisor_t)
 auth_read_passwd(openshell_supervisor_t)
 logging_send_syslog_msg(openshell_supervisor_t)
+# Its own limits, from its control group, and the host's name.
+fs_read_cgroup_files(openshell_supervisor_t)
+optional_policy(`
+	gen_require(`
+		type hostname_etc_t;
+	')
+	read_files_pattern(openshell_supervisor_t, hostname_etc_t, hostname_etc_t)
+')
 # It looks at /var/log when it starts.
 logging_list_logs(openshell_supervisor_t)
 files_dontaudit_getattr_all_dirs(openshell_supervisor_t)
