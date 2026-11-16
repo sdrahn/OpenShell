@@ -14,7 +14,7 @@ lifecycle.
 ## Compute Drivers
 
 Compute drivers create, inspect, and delete sandbox workloads. OpenShell ships
-drivers for Kubernetes, Docker, Podman, virtual machines, and Windows MXC. An
+drivers for Kubernetes, Docker, Podman, systemd, virtual machines, and Windows MXC. An
 external compute driver communicates with the gateway over a Unix domain
 socket and negotiates its protocol version and capabilities before serving
 requests.
@@ -27,6 +27,7 @@ to each driver crate:
 |---|---|
 | Docker | [`openshell-driver-docker`](https://github.com/NVIDIA/OpenShell/blob/main/crates/openshell-driver-docker/README.md) |
 | Podman | [`openshell-driver-podman`](https://github.com/NVIDIA/OpenShell/blob/main/crates/openshell-driver-podman/README.md) |
+| systemd | [`openshell-driver-systemd`](https://github.com/NVIDIA/OpenShell/blob/main/crates/openshell-driver-systemd/README.md) |
 | MicroVM | [`openshell-driver-vm`](https://github.com/NVIDIA/OpenShell/blob/main/crates/openshell-driver-vm/README.md) |
 | Kubernetes | [`openshell-driver-kubernetes`](https://github.com/NVIDIA/OpenShell/blob/main/crates/openshell-driver-kubernetes/README.md) |
 | Windows MXC | [`openshell-driver-mxc`](https://github.com/NVIDIA/OpenShell/blob/main/crates/openshell-driver-mxc/README.md) |
