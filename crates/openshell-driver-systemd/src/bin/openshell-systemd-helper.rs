@@ -127,6 +127,29 @@ fn remove_tree(path: &Path) -> std::io::Result<()> {
     }
 }
 
+/// Gives files the SELinux labels the loaded policy has for their paths.
+/// A new file takes its directory's label, and the units' domains
+/// (`selinux/openshell_systemd.te`) tell a sandbox's files apart by label.
+/// `restorecon` does nothing where SELinux is off; a host without it has
+/// no labels to set.
+fn relabel(arguments: &[&std::ffi::OsStr]) -> std::result::Result<(), String> {
+    const RESTORECON: &str = "/usr/sbin/restorecon";
+    if !Path::new(RESTORECON).exists() {
+        return Ok(());
+    }
+    match std::process::Command::new(RESTORECON)
+        .args(arguments)
+        .output()
+    {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => Err(format!(
+            "restorecon: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )),
+        Err(error) => Err(format!("restorecon: {error}")),
+    }
+}
+
 /// The two units' states as systemd names them, as one state.
 fn unit_state(supervisor: &str, workload: &str) -> UnitState {
     let transitioning = |state: &str| matches!(state, "activating" | "deactivating" | "reloading");
@@ -378,7 +401,20 @@ impl Helper {
             },
             Request::Provision(provision) => {
                 Self::stop_units(&provision.sandbox_id).await;
-                match self.write_launch_files(&provision) {
+                // The workspace's files keep the labels they were made with:
+                // only its directory is labelled.
+                let dir = self.sandbox_dir(&provision.sandbox_id);
+                let workspace = dir.join("workspace");
+                let written = self.write_launch_files(&provision).and_then(|()| {
+                    relabel(&[
+                        "-R".as_ref(),
+                        "-e".as_ref(),
+                        workspace.as_os_str(),
+                        dir.as_os_str(),
+                    ])?;
+                    relabel(&[workspace.as_os_str()])
+                });
+                match written {
                     Ok(()) => Response::Done,
                     Err(message) => Response::Error {
                         message: format!("provision sandbox {}: {message}", provision.sandbox_id),
@@ -531,6 +567,14 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&args.state_dir).into_diagnostic()?;
     std::fs::set_permissions(&args.state_dir, std::fs::Permissions::from_mode(0o711))
         .into_diagnostic()?;
+    relabel(&[
+        "-R".as_ref(),
+        "/.openshell".as_ref(),
+        "/sandbox".as_ref(),
+        "/etc/openshell".as_ref(),
+    ])
+    .map_err(|message| miette!("{message}"))?;
+    relabel(&[args.state_dir.as_os_str()]).map_err(|message| miette!("{message}"))?;
     let helper = Helper {
         state_dir: args.state_dir,
         owner_uid: 0,
